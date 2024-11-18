@@ -1,3 +1,4 @@
+using Amazon.DynamoDBv2;
 using Amazon.S3;
 using BlazorApp1.Components;
 
@@ -10,6 +11,9 @@ namespace BlazorApp1
         {
             var builder = WebApplication.CreateBuilder(args);
             builder.Services.AddAWSService<IAmazonS3>();
+            // Register the Amazon DynamoDB client
+            builder.Services.AddAWSService<IAmazonDynamoDB>();
+            builder.Services.AddSingleton<SqsService>();
             // Add services to the container.
             builder.Services.AddRazorComponents()
                 .AddInteractiveServerComponents();
