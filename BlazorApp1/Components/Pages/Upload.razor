@@ -1,0 +1,161 @@
+﻿@page "/upload"
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Components.Forms
+@using Amazon.S3
+@using Amazon.S3.Model
+@using Amazon.S3.Transfer
+@inject IAmazonS3 S3Client
+
+<h3>File Upload</h3>
+
+<InputFile OnChange="HandleFileSelected" />
+<p>@UploadMessage</p>
+<button @onclick="UploadFile" class="btn btn-primary" disabled="@IsButtonDisabled">Upload to S3</button>
+
+@if (!string.IsNullOrEmpty(SuccessMessage))
+{
+    <p class="text-success">@SuccessMessage</p>
+}
+
+<!-- Modal -->
+<div class="modal @ModalClass" tabindex="-1" style="display: @(IsModalVisible ? "block" : "none")">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header" style="font-size: 1.5rem;">
+                <h5 class="modal-title">Uploading...</h5>
+                <button type="button" class="btn-close" @onclick="HideModal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Uploading your file, please wait...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<h3>Files in S3 Bucket</h3>
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>File Name</th>
+            <th>File Size (KB)</th>
+            <th>Last Modified</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var file in S3Files)
+        {
+            <tr>
+                <td>@file.Key</td>
+                <td>@(file.Size / 1024) KB</td>  <!-- Convert bytes to KB -->
+                <td>@file.LastModified.ToString("yyyy-MM-dd HH:mm:ss")</td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    private IBrowserFile? SelectedFile;
+    private string? UploadMessage;
+    private string? SuccessMessage;
+    private bool IsButtonDisabled = true;  // Disable by default
+    private bool IsUploading = false;      // Track if upload is in progress
+    private string? FileExtension;
+    private bool IsModalVisible = false;   // Control modal visibility
+    private string ModalClass => IsModalVisible ? "show" : ""; // Bootstrap class to show the modal
+
+    // List of files from S3 bucket
+    private List<S3Object> S3Files = new List<S3Object>();
+
+    private async Task ListS3Files()
+    {
+        try
+        {
+            // Set the S3 bucket name
+            var bucketName = "assemblyai-challenge-transcripts"; // Replace with your S3 bucket name
+
+            // List objects in the S3 bucket
+            var response = await S3Client.ListObjectsV2Async(new ListObjectsV2Request
+                {
+                    BucketName = bucketName
+                });
+
+            // Bind the response to the S3Files list
+            S3Files = response.S3Objects;
+            StateHasChanged(); // Update UI after fetching data
+        }
+        catch (Exception ex)
+        {
+            SuccessMessage = $"Error loading files: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+
+    private void HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        SelectedFile = e.File;
+        FileExtension = Path.GetExtension(SelectedFile.Name);
+        UploadMessage = $"File selected: {SelectedFile?.Name}";
+        IsButtonDisabled = SelectedFile == null; // Enable button if a file is selected
+        StateHasChanged(); // Ensure the UI is updated
+    }
+
+    private async Task UploadFile()
+    {
+        if (SelectedFile is not null && !IsUploading)
+        {
+            try
+            {
+                // Disable the button and set the uploading state
+                IsUploading = true;
+                IsButtonDisabled = true;
+
+                // Show the modal when uploading starts
+                IsModalVisible = true;
+                StateHasChanged();
+
+                // Set the S3 bucket name and file key (name in the bucket)
+                var bucketName = "assemblyai-challenge"; // Replace with your S3 bucket name
+                var fileKey = $"{Guid.NewGuid().ToString()}{FileExtension}";  // Use the file's original name or generate a unique one
+
+                // Create a stream to read the file contents
+                await using var stream = SelectedFile.OpenReadStream(maxAllowedSize: 100 * 1024 * 1024); // 100 MB max
+
+                // Create a transfer utility object to interact with S3
+                var transferUtility = new TransferUtility(S3Client);
+
+                // Upload the file to the S3 bucket
+                await transferUtility.UploadAsync(stream, bucketName, fileKey);
+
+                // Update the success message
+                SuccessMessage = $"File uploaded successfully to S3: {fileKey}";
+            }
+            catch (Exception ex)
+            {
+                // Handle errors (e.g., file too large, permission issues, etc.)
+                SuccessMessage = $"An error occurred: {ex.Message}";
+            }
+            finally
+            {
+                // Hide the modal and reset the upload state
+                IsModalVisible = false;
+                IsUploading = false;
+                IsButtonDisabled = false;
+                await ListS3Files(); // Refresh file list after upload
+                StateHasChanged();
+            }
+        }
+    }
+
+    // Method to hide modal if the close button is clicked
+    private void HideModal()
+    {
+        IsModalVisible = false;
+        StateHasChanged();
+    }
+
+    // On initialization, fetch the list of files from S3
+    protected override async Task OnInitializedAsync()
+    {
+        await ListS3Files();
+    }
+}
