@@ -58,7 +58,7 @@
             {
                 <tr>
                     <td>@item["Id"]</td>
-                    <td>@item["Text"].ToString()?.Substring(0, 1000)...</td>
+                    <td>@(item["Text"]?.ToString()?.Length > 2000 ? item["Text"].ToString()?.Substring(0, 2000) + "..." : item["Text"])</td>
                     <td>@item["Timestamp"]</td>
                 </tr>
             }
@@ -80,22 +80,23 @@
     private async Task ListDynamoDBItems()
     {
         Console.WriteLine("Calling ListDynamoDBItems");
-        try
-        {
+        // try
+        // {
             var tableName = "AssemblyAI"; // Replace with your DynamoDB table name
             var table = Table.LoadTable(DynamoDBClient, tableName);
             var search = table.Scan(new ScanFilter());
             DynamoDBItems = await search.GetNextSetAsync();
             Console.WriteLine($"Table contains {DynamoDBItems.Count} items");
-        }
-        catch (Exception ex)
-        {
-            SuccessMessage = $"Error loading DynamoDB data: {ex.Message}";
-        }
-        finally
-        {
-            await InvokeAsync(StateHasChanged);
-        }
+            
+        // }
+        // catch (Exception ex)
+        // {
+        //     UploadMessage = $"Error loading DynamoDB data: {ex.Message}";
+        // }
+        // finally
+        // {
+        //     //await InvokeAsync(StateHasChanged);
+        // }
     }
 
     private void HandleFileSelected(InputFileChangeEventArgs e)
@@ -149,17 +150,31 @@
     {
         Console.WriteLine("RefreshDynamoDbTable Invoked");
         await ListDynamoDBItems();
+        UploadMessage = $"Table refreshed at {DateTime.Now.ToLongTimeString()}";
         await InvokeAsync(StateHasChanged);
     }
+    private bool _isInitialized;
+    private SqsBackgroundService _backgroundService;
 
     protected override async Task OnInitializedAsync()
     {
+        if (_isInitialized) return;
+        _isInitialized = true;
+
         await base.OnInitializedAsync();
 
         var sqsService = ServiceProvider.GetRequiredService<SqsService>();
-        var backgroundService = new SqsBackgroundService(sqsService, RefreshDynamoDbTable);
+        _backgroundService = new SqsBackgroundService(sqsService, RefreshDynamoDbTable);
 
-        _ = backgroundService.StartAsync(CancellationToken.None);
+        _ = _backgroundService.StartAsync(CancellationToken.None);
         await ListDynamoDBItems(); // Load initial data
+    }
+    public async ValueTask DisposeAsync()
+    {
+        // Cleanup the background service when the component is disposed
+        if (_backgroundService != null)
+        {
+            await _backgroundService.StopAsync(CancellationToken.None);
+        }
     }
 }

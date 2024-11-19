@@ -28,7 +28,7 @@ public class SqsBackgroundService : BackgroundService
             }
 
             // Delay before polling again
-            await Task.Delay(10000, stoppingToken);
+            await Task.Delay(2000, stoppingToken);
         }
     }
 }
