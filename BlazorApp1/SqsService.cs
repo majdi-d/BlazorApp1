@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 public class SqsService
 {
     private readonly AmazonSQSClient _sqsClient;
-    private readonly string _queueUrl = "https://sqs.us-east-1.amazonaws.com/541962714297/success-queue";
+    private readonly string _queueUrl = $"https://sqs.us-east-1.amazonaws.com/{Environment.GetEnvironmentVariable("AWS_ACCOUNT_ID")}/success-queue";
 
     public SqsService()
     {

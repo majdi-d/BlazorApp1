@@ -154,7 +154,7 @@
         await InvokeAsync(StateHasChanged);
     }
     private bool _isInitialized;
-    private SqsBackgroundService _backgroundService;
+    private SqsBackgroundService? _backgroundService;
 
     protected override async Task OnInitializedAsync()
     {
